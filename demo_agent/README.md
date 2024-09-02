@@ -55,5 +55,6 @@ Schematic notes, not complete:
 1. `docker exec -it <image_name> bash`
 1. `apt-get update`, `apt-get install iputils-ping wget curl python3 pip git gh`
 1. Install miniconda, create python 3.10 env,  `pip install torch` (IIRC this installs the correct CUDA version automatically)
-1. git clone MiniWob and BrowserGym into `/home/ubuntu`, install them and their dependencies using the repo instructions
+1. git clone MiniWob and **this fork of BrowserGym** into `/home/ubuntu`, install them and their dependencies using the repo instructions
 1. `apt-get install alsa-tools` (needed for playwright to resolve chromium dependencies), `playwright install chromium`, `playwright install-deps chromium`
+1. Set bash scripts in this repo to executable
