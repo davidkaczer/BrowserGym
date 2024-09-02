@@ -110,7 +110,7 @@ WARNING this demo agent will soon be moved elsewhere. Expect it to be removed at
     env_args = EnvArgs(
         task_name=args.task_name,
         task_seed=None,
-        max_steps=100,
+        max_steps=30,
         headless=args.headless,
         viewport={"width": 1500, "height": 1280},
         slow_mo=args.slow_mo,
@@ -142,7 +142,7 @@ WARNING this demo agent will soon be moved elsewhere. Expect it to be removed at
                 multi_actions=args.multi_actions,
                 action_space="bid+nav",
                 use_abstract_example=True,  # "Prompt the agent with an abstract example."
-                use_concrete_example=True,  # "Prompt the agent with a concrete example."
+                use_concrete_example=False,  # "Prompt the agent with a concrete example."
                 use_screenshot=args.use_screenshot,
                 enable_chat=True,
                 demo_mode="default" if args.demo_mode else "off",

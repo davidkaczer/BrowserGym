@@ -106,6 +106,7 @@ class ChatModelArgs:
         name_patterns_with_vision = [
             "vision",
             "4o",
+            # "llava",
         ]
         return any(pattern in self.model_name for pattern in name_patterns_with_vision)
 
@@ -146,9 +147,9 @@ class HuggingFaceChatModel(SimpleChatModel):
         max_new_tokens: int,
         max_total_tokens: int,
         max_input_tokens: int,
-        model_url: str,
-        eai_token: str,
-        n_retry_server: int,
+        model_url: str = None,
+        eai_token: str = None,
+        n_retry_server: int = 1,
     ):
         """
         Initializes the CustomLLMChatbot with the specified configurations.
@@ -203,6 +204,7 @@ class HuggingFaceChatModel(SimpleChatModel):
             logging.info("Loading the LLM locally")
             pipe = pipeline(
                 task="text-generation",
+                # task="image-to-text",
                 model=model_name,
                 device_map="auto",
                 max_new_tokens=max_new_tokens,
@@ -233,6 +235,7 @@ class HuggingFaceChatModel(SimpleChatModel):
         while True:
             try:
                 response = self.llm(prompt)
+                # response = response.split(self.tokenizer.eos_token)[-1]
                 return response
             except Exception as e:
                 if itr == self.n_retry_server - 1:

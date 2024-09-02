@@ -2,6 +2,7 @@
 # all these symbols will be available in browsergym actions
 import playwright.sync_api
 from typing import Literal
+from urllib.parse import urlparse
 
 from .utils import (
     add_demo_mode_effects,
@@ -15,6 +16,13 @@ send_message_to_user: callable = None
 report_infeasible_instructions: callable = None
 demo_mode: Literal["off", "default", "all_blue", "only_visible_elements"] = None
 retry_with_force: bool = False
+
+ALLOWED_HOSTS = [
+    "onestopmarket.com",
+    "www.onestopmarket.com"
+    "magento2.local",
+    "www.magento2.local",
+]
 
 """IMPORTANT
 The following primitives are meant to be included in the browsergym action using
@@ -490,7 +498,11 @@ def goto(url: str):
     Examples:
         goto('http://www.example.com')
     """
-    page.goto(url)
+    parsed_url = urlparse(url)
+    if url.hostname in ALLOWED_HOSTS:
+        page.goto(url)
+    else:
+        pass
 
 
 # https://playwright.dev/python/docs/api/class-page#page-go-back
