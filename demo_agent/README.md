@@ -3,7 +3,7 @@
 ### Set up WebArena containers
 
 1. Check that you are in the `docker` group by running `groups` in the terminal. If not, ask the host server admin to add you to the docker group. 
-1. Follow the [WebArena setup instructions](https://github.com/web-arena-x/webarena/tree/main/environment_docker#individual-website), using `wget` to download the docker `.tar` and `.zim` images. Depending on your network speed, this can take a few hours as the docker images are very large.
+1. Follow the [WebArena setup instructions](https://github.com/web-arena-x/webarena/tree/main/environment_docker#individual-website), using `wget` to download the docker `.tar` and `.zim` images. Depending on your network speed, this can take a few hours as the docker images are very large. Use `localhost` as the hostname in the setup commands.
 1. Check that all containers are running with `docker ps` and that they are mapping the required ports. In the `NETWORK` column, you should see something like `0.0.0.0:7780->80/tcp, :::7780->80/tcp` with a different port mapping for each container.
 1. Check that all containers are serving the webpages by running `wget http://localhost:7780/admin` and so on using the URLs in the setup instructions
 1. Run `docker inspect shopping_admin` and note down the `IPAddress`, which should start with 172.17. Repeat for each container.
@@ -32,7 +32,8 @@
 ### Set up evaluation
 1. In the container shell, `cd /home/ubuntu/BrowserGym/demo_agent`
 1. `conda activate webagents`
-1. Edit `set_env_vars.sh` to enter the correct IPs for the servers (starting with 172.17). The lines should look like `export WA_SHOPPING_ADMIN="http://172.17.0.6:80/admin"`. Also set `CUDA_VISIBLE_DEVICES` to the correct number of GPUs.
+1. Edit `set_env_vars.sh` to enter the correct IPs for the servers (starting with 172.17). The lines should look like `export WA_SHOPPING_ADMIN="http://172.17.0.6:80/admin"`, except `WA_GITLAB` which should just be an IP on port `8023`, for example `WA_GITLAB="172.17.0.6:8023/explore"`. `WA_MAP` and `WA_HOMEPAGE` are currently unused.
+1. Set `CUDA_VISIBLE_DEVICES` to the correct number of GPUs.
 1. `. ./set_env_vars.sh` (the leading dot is important)
 1. Edit `run.sh` to enter the desired task range and model checkpoint.
 1. `./run.sh`
@@ -52,7 +53,7 @@ To quickly collect eval stats, create a new folder, move all relevant output fol
 Schematic notes, not complete:
 
 1. `docker run -dit --name browsergym --gpus all ubuntu`
-1. `docker exec -it <image_name> bash`
+1. `docker exec -it <container_name> bash`
 1. `apt-get update`, `apt-get install iputils-ping wget curl python3 pip git gh`
 1. Install miniconda, create python 3.10 env,  `pip install torch` (IIRC this installs the correct CUDA version automatically)
 1. git clone MiniWob and **this fork of BrowserGym** into `/home/ubuntu`, install them and their dependencies using the repo instructions
