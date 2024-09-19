@@ -7,7 +7,7 @@ from pathlib import Path
 
 from browsergym.experiments import ExpArgs, EnvArgs
 
-from agents.legacy.agent import GenericAgentArgs
+from agents.legacy.agent import GenericAgentArgs, SearchAgentArgs
 from agents.legacy.dynamic_prompting import Flags
 from agents.legacy.utils.chat_api import ChatModelArgs
 
@@ -122,7 +122,7 @@ WARNING this demo agent will soon be moved elsewhere. Expect it to be removed at
 
     exp_args = ExpArgs(
         env_args=env_args,
-        agent_args=GenericAgentArgs(
+        agent_args=SearchAgentArgs(
             chat_model_args=ChatModelArgs(
                 model_name=args.model_name,
                 max_total_tokens=128_000,  # "Maximum total tokens for the chat model."
