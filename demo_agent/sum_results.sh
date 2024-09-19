@@ -7,4 +7,4 @@ echo "Cumulative reward: $CUM_REWARD
 Num experiments: $NUM_EXPERIMENTS
 Success rate: $SUCCESS_RATE
 Successful runs:"
-grep -oP '\Q"cum_reward": \E1' $(find $RESULTS_DIR -type f -name "summary_info.json") 
+grep -oP '\Q"cum_reward": \E1' $(find $RESULTS_DIR -type f -name "summary_info.json") | sort -t: -k1

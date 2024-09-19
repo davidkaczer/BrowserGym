@@ -5,7 +5,7 @@ WARNING DEPRECATED WILL BE REMOVED SOON
 from dataclasses import asdict, dataclass, field
 import traceback
 from warnings import warn
-from langchain.schema import HumanMessage, SystemMessage
+from langchain.schema import HumanMessage, SystemMessage, AIMessage
 
 from browsergym.core.action.base import AbstractActionSet
 from browsergym.utils.obs import flatten_axtree_to_str, flatten_dom_to_str, prune_html
@@ -115,6 +115,7 @@ does not support vision. Disabling use_screenshot."""
         chat_messages = [
             SystemMessage(content=dynamic_prompting.SystemPrompt().prompt),
             HumanMessage(content=prompt),
+            # AIMessage(content="")
         ]
 
         def parser(text):

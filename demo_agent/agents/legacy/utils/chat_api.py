@@ -8,6 +8,9 @@ from typing import Optional, List, Any
 import logging
 from typing import Tuple
 import time
+import base64
+import PIL
+from copy import deepcopy
 
 from langchain_community.llms import HuggingFaceHub, HuggingFacePipeline
 from langchain_openai import ChatOpenAI
@@ -16,9 +19,10 @@ from langchain.chat_models.base import SimpleChatModel
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from pydantic import Field
 from transformers import pipeline
+from transformers.image_utils import load_image
 from dataclasses import dataclass
 from huggingface_hub import InferenceClient
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForVision2Seq, AutoProcessor
 from transformers import GPT2TokenizerFast
 
 
@@ -106,7 +110,8 @@ class ChatModelArgs:
         name_patterns_with_vision = [
             "vision",
             "4o",
-            # "llava",
+            "llava",
+            "Idefics",
         ]
         return any(pattern in self.model_name for pattern in name_patterns_with_vision)
 
@@ -190,6 +195,7 @@ class HuggingFaceChatModel(SimpleChatModel):
             "temperature": temperature,
         }
 
+        self.__dict__["idefics_hack"] = False
         if model_url is not None:
             logging.info("Loading the LLM from a URL")
             client = InferenceClient(model=model_url, token=eai_token)
@@ -200,6 +206,16 @@ class HuggingFaceChatModel(SimpleChatModel):
             logging.info("Serving the LLM on HuggingFace Hub")
             model_kwargs["max_length"] = max_new_tokens
             self.llm = HuggingFaceHub(repo_id=model_name, model_kwargs=model_kwargs)
+        elif "Idefics" in model_name and False:
+            logging.info("Loading the LLM locally")
+            self.__dict__["processor"] = AutoProcessor.from_pretrained(model_name)
+            self.llm = AutoModelForVision2Seq.from_pretrained(
+                model_name,
+                # torch_dtype=torch.bfloat16,
+                device_map="auto",
+                )
+            self.__dict__["max_new_tokens"] = max_new_tokens
+            self.__dict__["idefics_hack"] = True
         else:
             logging.info("Loading the LLM locally")
             pipe = pipeline(
@@ -224,7 +240,30 @@ class HuggingFaceChatModel(SimpleChatModel):
                 "The `stop`, `run_manager`, and `kwargs` arguments are ignored in this implementation."
             )
 
-        if self.tokenizer:
+        if self.idefics_hack:
+            most_recent_image_index = [i for i, message in enumerate(messages) if isinstance(message, HumanMessage) and type(message.content) is list][-1]
+
+            image_b64 = messages[1].content[most_recent_image_index]['image_url']['url'].split(",")[1]
+            image_pil = load_image(image_b64)
+            
+            messages_copy = deepcopy(messages)
+            for i, message in enumerate(messages_copy):
+                if isinstance(message, HumanMessage) and type(message.content) is list:
+                    if i == most_recent_image_index:
+                        message.content[1] = {"type": "image"}            
+                    else:
+                        message.content.pop()
+                                
+            messages_formated = _convert_messages_to_dict(messages_copy)
+            for message in messages_formated:
+                if isinstance(message["content"], str):
+                    message["content"] = [{"type": "text", "text": message["content"]}]
+                    
+            prompt = self.processor.apply_chat_template(messages_formated, add_generation_prompt=True)
+            inputs = self.processor(text=prompt, images=[image_pil], return_tensors="pt")
+            inputs = {k: v.to('cuda') for k, v in inputs.items()}
+            
+        elif self.tokenizer:
             messages_formated = _convert_messages_to_dict(messages)
             prompt = self.tokenizer.apply_chat_template(messages_formated, tokenize=False)
 
@@ -234,7 +273,12 @@ class HuggingFaceChatModel(SimpleChatModel):
         itr = 0
         while True:
             try:
-                response = self.llm(prompt)
+                if self.idefics_hack:
+                    response = self.llm.generate(**inputs, max_new_tokens=self.max_new_tokens)
+                    response = self.processor.batch_decode(response, skip_special_tokens=True)[0]
+                    response = response.split('Assistant: ')[-1]
+                else:
+                    response = self.llm(prompt)
                 # response = response.split(self.tokenizer.eos_token)[-1]
                 return response
             except Exception as e:

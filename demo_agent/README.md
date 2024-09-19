@@ -59,3 +59,18 @@ Schematic notes, not complete:
 1. git clone MiniWob and **this fork of BrowserGym** into `/home/ubuntu`, install them and their dependencies using the repo instructions
 1. `apt-get install alsa-tools` (needed for playwright to resolve chromium dependencies), `playwright install chromium`, `playwright install-deps chromium`
 1. Set bash scripts in this repo to executable
+
+### Setting up the `classifieds` container for VisualWebArena
+
+The repo recommends using docker compose. If this is unavailable on your machine, you can follow these steps:
+
+1. Follow the [official VWA instructions](https://github.com/web-arena-x/visualwebarena/tree/main/environment_docker#classifieds-website) to set up the container on another machine using `docker compose up`
+1. Save `classifieds` and `classifieds_db` images using `docker image save -o classifieds.tar jykoh/classifieds:latest` and `docker image save -o classifieds_db.tar mysql:8.1`
+1. Transfer the `.tar` images and the `classifieds_docker_compose` directory to target machine using a tool such as `rsync`
+1. Load the images with `docker image load  --input classifieds.tar` and `docker image load  --input classifieds_db.tar`
+1. Run the DB with `docker run --name classifieds_db -e MYSQL_ROOT_PASSWORD=password -e MYSQL_DATABASE=osclass -v ./mysql:/docker-entrypoint-initdb.d -v db_data:/var/lib/mysql -d mysql:8.1`
+1. Execute the `docker exec classifieds_db mysql -u root -ppassword osclass -e 'source docker-entrypoint-initdb.d/osclass_craigslist.sql'` command from the official instructions to populate the MySQL DB. Note that this must be executed from the `classifieds_docker_compose` directory
+1. Inspect the DB container with `docker inspect classifieds_db` and note its IP address, beginning with 172.17
+1. Run the classifieds server with `docker run --name classifieds -p 9980:9980 -e CLASSIFIEDS=http://127.0.0.1:9980/ -e RESET_TOKEN=4b61655535e7ed388f0d40a93600254c -d jykoh/classifieds:latest`
+1. Log into the classifieds container with `docker exec -it classifieds_db bash` and add `172.17.0.9    db` to `/etc/hosts` (replace with IP address of classifieds_db from step 7)
+1. Check that server works by running `wget localhost:9980`

@@ -499,7 +499,7 @@ def goto(url: str):
         goto('http://www.example.com')
     """
     parsed_url = urlparse(url)
-    if url.hostname in ALLOWED_HOSTS:
+    if parsed_url.hostname in ALLOWED_HOSTS:
         page.goto(url)
     else:
         pass

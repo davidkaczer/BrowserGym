@@ -418,6 +418,7 @@ def image_to_jpg_base64_url(image: np.ndarray | Image.Image):
         image = Image.fromarray(image)
     if image.mode in ("RGBA", "LA"):
         image = image.convert("RGB")
+    image = image.resize((224, 224), Image.Resampling.LANCZOS)
     buffered = io.BytesIO()
     image.save(buffered, format="JPEG")
 

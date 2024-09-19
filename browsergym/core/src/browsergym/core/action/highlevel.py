@@ -325,7 +325,8 @@ Only a single action can be provided at once."""
         if not function_calls:
             raise ValueError("Received an empty action.")
         elif len(function_calls) > 1 and not self.multiaction:
-            raise ValueError("Received a multi-action, only single-actions are allowed.")
+            function_calls = function_calls[-1:]
+            # raise ValueError("Received a multi-action, only single-actions are allowed.")
 
         python_code = ""
 
