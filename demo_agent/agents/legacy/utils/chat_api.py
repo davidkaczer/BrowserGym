@@ -8,8 +8,10 @@ from typing import Optional, List, Any
 import logging
 from typing import Tuple
 import time
+import torch
 import base64
 import PIL
+import openai
 from copy import deepcopy
 
 from langchain_community.llms import HuggingFaceHub, HuggingFacePipeline
@@ -83,16 +85,26 @@ class ChatModelArgs:
                 max_tokens=self.max_new_tokens,
             )
         else:
-            return HuggingFaceChatModel(
-                model_name=self.model_name,
-                hf_hosted=self.hf_hosted,
-                temperature=self.temperature,
-                max_new_tokens=self.max_new_tokens,
-                max_total_tokens=self.max_total_tokens,
-                max_input_tokens=self.max_input_tokens,
-                model_url=self.model_url,
-                n_retry_server=self.n_retry_server,
-            )
+            try:
+                chat = ChatOpenAI(
+                    model_name=self.model_name,
+                    temperature=self.temperature,
+                    max_tokens=self.max_new_tokens,
+                    base_url="http://localhost:8000/v1",
+                    )
+                chat.invoke("")
+                return chat
+            except (openai.NotFoundError, openai.BadRequestError, openai.APIConnectionError) as e:
+                return HuggingFaceChatModel(
+                    model_name=self.model_name,
+                    hf_hosted=self.hf_hosted,
+                    temperature=self.temperature,
+                    max_new_tokens=self.max_new_tokens,
+                    max_total_tokens=self.max_total_tokens,
+                    max_input_tokens=self.max_input_tokens,
+                    model_url=self.model_url,
+                    n_retry_server=self.n_retry_server,
+                )
 
     @property
     def model_short_name(self):
@@ -112,6 +124,7 @@ class ChatModelArgs:
             "4o",
             "llava",
             "Idefics",
+            "Pixtral",
         ]
         return any(pattern in self.model_name for pattern in name_patterns_with_vision)
 
@@ -193,6 +206,7 @@ class HuggingFaceChatModel(SimpleChatModel):
 
         model_kwargs = {
             "temperature": temperature,
+            "attn_implementation": "flash_attention_2",
         }
 
         self.__dict__["idefics_hack"] = False
@@ -206,7 +220,7 @@ class HuggingFaceChatModel(SimpleChatModel):
             logging.info("Serving the LLM on HuggingFace Hub")
             model_kwargs["max_length"] = max_new_tokens
             self.llm = HuggingFaceHub(repo_id=model_name, model_kwargs=model_kwargs)
-        elif "Idefics" in model_name and False:
+        elif "Idefics" in model_name or "pixtral" in model_name:
             logging.info("Loading the LLM locally")
             self.__dict__["processor"] = AutoProcessor.from_pretrained(model_name)
             self.llm = AutoModelForVision2Seq.from_pretrained(
@@ -225,6 +239,7 @@ class HuggingFaceChatModel(SimpleChatModel):
                 device_map="auto",
                 max_new_tokens=max_new_tokens,
                 model_kwargs=model_kwargs,
+                torch_dtype=torch.bfloat16,
             )
             self.llm = HuggingFacePipeline(pipeline=pipe)
 

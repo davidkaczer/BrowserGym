@@ -14,7 +14,7 @@ from browsergym.utils.obs import flatten_axtree_to_str, flatten_dom_to_str, prun
 from browsergym.experiments import Agent, AbstractAgentArgs
 
 from ..legacy import dynamic_prompting
-from .utils.llm_utils import ParseError, retry
+from .utils.llm_utils import ParseError, retry, retry_batched
 from .utils.chat_api import ChatModelArgs
 
 
@@ -260,7 +260,7 @@ does not support vision. Disabling use_screenshot."""
 
         # generate candidate responses
         responses = []
-        for _ in range(2):
+        for _ in range(1):
             # retry() modifies chat_messages by appending AIMessage
             chat_messages = [
                 SystemMessage(content=dynamic_prompting.SystemPrompt().prompt),
@@ -268,17 +268,17 @@ does not support vision. Disabling use_screenshot."""
                 # AIMessage(content="")
             ]
             try:
-                ans_dict = retry(self.chat_llm, chat_messages, n_retry=1, parser=parser)
+                # ans_dict = retry_batched(self.chat_llm, chat_messages, n_retry=1, parser=parser)
                 # inferring the number of retries, TODO: make this less hacky
-                ans_dict["n_retry"] = (len(chat_messages) - 3) / 2
-                responses.append(ans_dict)
+                # ans_dict["n_retry"] = (len(chat_messages) - 3) / 2
+                responses = retry_batched(self.chat_llm, [chat_messages] * 2, n_retry=1, parser=parser)
             except ValueError as e:
                 # Likely due to maximum retry. We catch it here to be able to return
                 # the list of messages for further analysis
                 pass
         
         # TODO: better prompt and more robust matching
-        def evaluate_response(ans_dict):
+        def evaluate_response(ans_dict: dict) -> float:
             eval_prompt = f"""
 Based on the following goal:
 Goal: {obs['goal']}         
@@ -294,11 +294,35 @@ Rating:
                 return rating if 0.0 <= rating <= 10.0 else default_rating
             except IndexError:
                 return default_rating
-        
+            
         # apply rating                
-        for response in responses:
-            if response["action"] is not None:
-                response["rating"] = evaluate_response(response)
+        # for response in responses:
+        #     if response["action"] is not None:
+        #         response["rating"] = evaluate_response(response)
+            
+        def evaluate_response_batched(responses: list[dict]) -> list[dict]:
+            for res in responses:
+                if "think" not in res.keys():
+                    res["think"] = "No reasoning"
+            eval_prompts = [f"""Based on the following goal:
+Goal: {obs['goal']}         
+Does the following reasoning describe a logical course of action?
+Reasoning: {ans_dict['think']}
+Output a rating between 0 and 10.
+Rating:
+""" for ans_dict in responses]
+            default_rating = 5.0
+            llm_out = self.chat_llm.batch(eval_prompts)
+            for generation, response in zip(llm_out, responses):
+                if response["action"] is not None:
+                    try:
+                        rating = float(re.findall(r'Rating: (\d+)', generation.content)[-1])
+                        response["rating"] = rating if 0.0 <= rating <= 10.0 else default_rating
+                    except IndexError:
+                        response["rating"] = default_rating
+            return responses
+        
+        responses = evaluate_response_batched(responses)
         
         # pick one response
         try:

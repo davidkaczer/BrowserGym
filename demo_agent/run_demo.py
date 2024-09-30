@@ -122,7 +122,7 @@ WARNING this demo agent will soon be moved elsewhere. Expect it to be removed at
 
     exp_args = ExpArgs(
         env_args=env_args,
-        agent_args=SearchAgentArgs(
+        agent_args=GenericAgentArgs(
             chat_model_args=ChatModelArgs(
                 model_name=args.model_name,
                 max_total_tokens=128_000,  # "Maximum total tokens for the chat model."
@@ -150,7 +150,7 @@ WARNING this demo agent will soon be moved elsewhere. Expect it to be removed at
         ),
     )
 
-    exp_args.prepare(Path("./results"))
+    exp_args.prepare(Path("./results/eval_8b"))
     exp_args.run()
 
 
