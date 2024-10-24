@@ -141,4 +141,12 @@ error_logs.txt
 # tests
 tests/results
 tmp.py
-.vscode/settings.json
+.vscode/**
+
+# demo and results
+results/
+
+.vscode/launch.json
+
+# assistantbench
+tests/assistantbench/assistantbench-predictions-test.jsonl

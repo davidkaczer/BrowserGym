@@ -12,30 +12,39 @@ https://github.com/ServiceNow/BrowserGym/assets/26232819/e0bfc788-cc8e-44f1-b8c3
 _Example of a GPT4-V agent executing openended tasks (top row, chat interactive), as well as WebArena and WorkArena tasks (bottom row)_
 
 BrowserGym includes the following benchmarks by default:
- - [MiniWob++](https://miniwob.farama.org/)
+ - [MiniWoB++](https://miniwob.farama.org/)
  - [WebArena](https://webarena.dev/)
  - [VisualWebArena](https://jykoh.com/vwa)
- - [WorkArena](https://github.com/ServiceNow/WorkArena)
+ - [WorkArena++](https://github.com/ServiceNow/WorkArena)
+ - [AssistantBench](https://github.com/oriyor/assistantbench)
 
-Designing new web benchmarks with BrowserGym is easy, and simply requires to inherit the [`AbstractBrowserTask`](https://github.com/ServiceNow/BrowserGym/blob/main/core/src/browsergym/core/task.py#L7C7-L7C26) class.
+Designing new web benchmarks with BrowserGym is easy, and simply requires to inherit the [`AbstractBrowserTask`](https://github.com/ServiceNow/BrowserGym/blob/main/browsergym/core/src/browsergym/core/task.py#L7C7-L7C26) class.
 
 ## Setup
 
-To install browsergym, you can either install one of the `browsergym-miniwob`, `browsergym-webarena`, `browsergym-visualwebarena` and `browsergym-workarena` packages, or you can simply install `browsergym` which includes all of these by default.
+To use browsergym, install one of the following packages:
 ```sh
-pip install browsergym
+pip install browsergym  # (recommended) everything below
+pip install browsergym-experiment  # experiment utilities (agent, loop, benchmarks) + everything below
+pip install browsergym-core  # core functionalities only (no benchmark, just the openended task)
+pip install browsergym-miniwob  # core + miniwob
+pip install browsergym-webarena  # core + webarena
+pip install browsergym-visualwebarena  # core + visualwebarena
+pip install browsergym-workarena  # core + workarena
+pip install browsergym-assistantbench  # core + assistantbench
 ```
 
-Then, a required step is to setup playwright by running
+Then setup playwright by running
 ```sh
 playwright install chromium
 ```
 
 Finally, each benchmark comes with its own specific setup that requires to follow additional steps.
- - for miniwob, see [miniwob/README.md](browsergym/miniwob/README.md)
- - for webarena, see [webarena/README.md](browsergym/webarena/README.md)
- - for visualwebarena, see [visualwebarena/README.md](browsergym/visualwebarena/README.md)
- - for workarena, see [WorkArena](https://github.com/ServiceNow/WorkArena)
+ - for MiniWoB++, see [miniwob/README.md](browsergym/miniwob/README.md)
+ - for WebArena, see [webarena/README.md](browsergym/webarena/README.md)
+ - for VisualWebArena, see [visualwebarena/README.md](browsergym/visualwebarena/README.md)
+ - for WorkArena, see [WorkArena](https://github.com/ServiceNow/WorkArena)
+ - for AssistantBench, see [assistantbench/README.md](browsergym/assistantbench/README.md)
 
 ### Development setup
 To install browsergym locally for development, use the following commands:
@@ -158,24 +167,43 @@ print("\n".join(env_ids))
 
 ## Demo
 
-If you want to experiment with an agent in BrowserGym, follow these steps:
+If you want to experiment with a demo agent in BrowserGym, follow these steps:
 
 ```sh
-cd demo-agent
-conda env create -f environment.yml; conda activate demo-agent
+conda env create -f demo_agent/environment.yml
+conda activate demo_agent
 # or simply use `pip install -r requirements.txt`
 playwright install chromium
 ```
 
-Optional: Set your `OPENAI_API_KEY` to use a GPT agent.
+Our demo agent uses `openai` as a backend, be sure to set your `OPENAI_API_KEY`.
 
-Launch the demo on the open web:
-
+Launch the demo agent on the open web:
 ```sh
-python run_demo.py --task_name openended --start_url https://www.google.com
+python demo_agent/run_demo.py --task_name openended --start_url https://www.google.com
 ```
 
-You can customize your experience by changing the `model_name` to your preferred LLM, toggling Chain-of-thought with `use_thinking`, adding screenshots for your VLMs with `use_screenshot`, and much more!
+Or use it to solve a simple MiniWoB task:
+```sh
+python demo_agent/run_demo.py --task_name miniwob.click-test
+```
+
+A VisualWebArena task:
+```sh
+python demo_agent/run_demo.py --task_name visualwebarena.398
+```
+
+A WebArena task:
+```sh
+python demo_agent/run_demo.py --task_name webarena.4
+```
+
+A WorkArena task:
+```sh
+python demo_agent/run_demo.py --task_name workarena.servicenow.order-standard-laptop
+```
+
+You can customize your experience by changing the `model_name` to your preferred LLM (it uses `gpt-4o-mini` by default), adding screenshots for your VLMs with `use_screenshot`, and much more! (see `python run_demo.py --help`)
 
 
 ## Citing This Work

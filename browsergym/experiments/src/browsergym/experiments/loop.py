@@ -8,7 +8,6 @@ import sys
 import time
 import traceback
 import uuid
-
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field, is_dataclass
@@ -18,18 +17,22 @@ from typing import Optional
 
 import gymnasium as gym
 import numpy as np
-from browsergym.core.chat import Chat
+from dataclasses_json import DataClassJsonMixin
 from PIL import Image
 from tqdm import tqdm
+
+from browsergym.core.chat import Chat
 
 from .agent import Agent
 from .utils import count_messages_token, count_tokens
 
 logger = logging.getLogger(__name__)
 
+SEED_MAX = 2 ^ 32  # arbitrary max value (exclusive), seems large enough
+
 
 @dataclass
-class EnvArgs:
+class EnvArgs(DataClassJsonMixin):
     task_name: str
     task_seed: int = None
     max_steps: int = None
@@ -88,6 +91,19 @@ class AbstractAgentArgs(ABC):
         """Comply the experiments.loop API for instantiating the agent."""
 
 
+def save_package_versions(exp_dir: Path):
+    """Save the versions of the installed packages in the experiment directory."""
+    python_dists = "\n".join(
+        sorted(
+            [
+                f'{dist.metadata["Name"]}=={dist.metadata["Version"]}'
+                for dist in importlib.metadata.distributions()
+            ]
+        )
+    )
+    (exp_dir / "package_versions.txt").write_text(python_dists)
+
+
 @dataclass
 class ExpArgs:
     """Arguments to run an experiment, i.e. run agent in an environment until done.
@@ -128,8 +144,11 @@ class ExpArgs:
     stack_trace: str = None
     order: int = None  # use to keep the original order the experiments were meant to be launched.
     logging_level: int = logging.INFO
+    logging_level_stdout: int = logging.INFO
     exp_id: str = None
-    depends_on: tuple[str] = field(default_factory=tuple)
+    depends_on: tuple[str] = ()
+    save_screenshot: bool = True
+    save_som: bool = False
 
     def prepare(self, exp_root):
         """Prepare the experiment directory and save the experiment arguments.
@@ -137,7 +156,7 @@ class ExpArgs:
         This enables inspecting experiments that are not run yet.
         """
         if self.env_args.task_seed is None:
-            self.env_args.task_seed = np.random.randint(0, 1000)
+            self.env_args.task_seed = np.random.randint(0, SEED_MAX)
 
         if self.exp_name is None:
             task_name = self.env_args.task_name
@@ -179,22 +198,8 @@ class ExpArgs:
         self._set_logger()
 
         # log python environment info
-        # from https://stackoverflow.com/a/78160009/1264211
-        python_dists = "\n".join(
-            sorted(
-                [
-                    f'{dist.metadata["Name"]}=={dist.metadata["Version"]}'
-                    for dist in importlib.metadata.distributions()
-                ]
-            )
-        )
-        logger.info(
-            f"""\
-Python version: {sys.version}
-Python installed distributions:
-{python_dists}
-"""
-        )
+        save_package_versions(self.exp_dir)
+
         episode_info = []
         env, step_info, err_msg, stack_trace = None, None, None, None
         try:
@@ -219,18 +224,24 @@ Python installed distributions:
                 logger.debug(f"Agent chose action:\n {action}")
 
                 if action is None:
-                    logger.debug(f"Agent returned None action. Ending episode.")
+                    # will end the episode after saving the step info.
                     step_info.truncated = True
-                    break
 
-                step_info.save_step_info(self.exp_dir)
+                step_info.save_step_info(
+                    self.exp_dir, save_screenshot=self.save_screenshot, save_som=self.save_som
+                )
                 logger.debug(f"Step info saved.")
 
                 _send_chat_info(env.unwrapped.chat, action, step_info.agent_info)
                 logger.debug(f"Chat info sent.")
 
+                if action is None:
+                    logger.debug(f"Agent returned None action. Ending episode.")
+                    break
+
                 step_info = StepInfo(step=step_info.step + 1)
                 episode_info.append(step_info)
+
                 logger.debug(f"Sending action to environment.")
                 step_info.from_step(env, action, obs_preprocessor=agent.obs_preprocessor)
                 logger.debug(f"Environment stepped.")
@@ -249,7 +260,9 @@ Python installed distributions:
         finally:
             try:
                 if step_info is not None:
-                    step_info.save_step_info(self.exp_dir)
+                    step_info.save_step_info(
+                        self.exp_dir, save_screenshot=self.save_screenshot, save_som=self.save_som
+                    )
             except Exception as e:
                 logger.error(f"Error while saving step info in the finally block: {e}")
             try:
@@ -277,12 +290,25 @@ Python installed distributions:
         # output logging traces to a log file
         file_handler = logging.FileHandler(self.exp_dir / "experiment.log")
         file_handler.setLevel(self.logging_level)  # same level as console outputs
-        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        formatter = logging.Formatter(
+            "%(asctime)s - %(process)d - %(name)s - %(levelname)s - %(message)s"
+        )
         file_handler.setFormatter(formatter)
+        # output handler
+        stream_handler = logging.StreamHandler()
+        stream_handler.setLevel(self.logging_level_stdout)
+        stream_handler.setFormatter(formatter)
         # setup root logger
         root_logger = logging.getLogger()
+
+        # remove previous stream handlers
+        for handler in root_logger.handlers:
+            if isinstance(handler, logging.StreamHandler):
+                root_logger.removeHandler(handler)
+
         root_logger.setLevel(self.logging_level)
         root_logger.addHandler(file_handler)
+        root_logger.addHandler(stream_handler)
         # setup openai logger (don't go below INFO verbosity)
         openai_logger = logging.getLogger("openai._base_client")
         openai_logger.setLevel(max(logging.INFO, self.logging_level))
@@ -410,20 +436,42 @@ class StepInfo:
 
         self.stats = stats
 
-    def save_step_info(self, exp_dir, save_json=False, save_jpg=True):
+    def save_step_info(self, exp_dir, save_json=False, save_screenshot=True, save_som=False):
+
+        screenshot = self.obs.pop("screenshot", None)
+        screenshot_som = self.obs.pop("screenshot_som", None)
+
+        if save_screenshot and screenshot is not None:
+            img = Image.fromarray(screenshot)
+            img.save(exp_dir / f"screenshot_step_{self.step}.png")
+
+        if save_som and screenshot_som is not None:
+            img = Image.fromarray(screenshot_som)
+            img.save(exp_dir / f"screenshot_som_step_{self.step}.png")
+
+        # save goal object (which might contain images) to a separate file to save space
+        if self.obs is not None and self.obs.get("goal_object", False):
+            # save the goal object only once (goal should never change once setup)
+            goal_object_file = Path(exp_dir) / "goal_object.pkl.gz"
+            if not goal_object_file.exists():
+                with gzip.open(goal_object_file, "wb") as f:
+                    pickle.dump(self.obs["goal_object"], f)
+            # set goal_object to a special placeholder value, which indicates it should be loaded from a separate file
+            self.obs["goal_object"] = None
 
         with gzip.open(exp_dir / f"step_{self.step}.pkl.gz", "wb") as f:
+            # TODO should we pop the screenshots too before this to save space ?
             pickle.dump(self, f)
-
-        if save_jpg and self.obs is not None:
-            for name in ("screenshot", "screenshot_som"):
-                if name in self.obs:
-                    img = Image.fromarray(self.obs[name])
-                    img.save(exp_dir / f"{name}_step_{self.step}.jpg")
 
         if save_json:
             with open(exp_dir / "steps_info.json", "w") as f:
                 json.dump(self, f, indent=4, cls=DataclassJSONEncoder)
+
+        # add the screenshots back to the obs
+        if screenshot is not None:
+            self.obs["screenshot"] = screenshot
+        if screenshot_som is not None:
+            self.obs["screenshot_som"] = screenshot_som
 
 
 def _extract_err_msg(episode_info: list[StepInfo]):
@@ -446,8 +494,6 @@ def _aggregate_episode_stats(episode_info: list[StepInfo]):
     These two summaries should cover many use cases. If more are needed, the
     user can compute other stats by reloading individual StepInfo.
     """
-    # discard the last step since it was not seen by the agent
-    episode_info = episode_info[:-1]
 
     stats = defaultdict(list)
     for step_info in episode_info:
@@ -552,6 +598,30 @@ class ExpResult:
         if self._steps_info.get(step, None) is None:
             with gzip.open(self.exp_dir / f"step_{step}.pkl.gz", "rb") as f:
                 self._steps_info[step] = pickle.load(f)
+            if "screenshot" not in self._steps_info[step].obs:
+                try:
+                    self._steps_info[step].obs["screenshot"] = np.array(
+                        self.get_screenshot(step), dtype=np.uint8
+                    )
+                except FileNotFoundError:
+                    pass
+            if "screenshot_som" not in self._steps_info[step].obs:
+                try:
+                    self._steps_info[step].obs["screenshot_som"] = np.array(
+                        self.get_screenshot(step, som=True), dtype=np.uint8
+                    )
+                except FileNotFoundError:
+                    pass
+        # if goal_object is set to None, it indicates it has been saved into a separate file
+        if (
+            self._steps_info[step].obs
+            and "goal_object" in self._steps_info[step].obs
+            and self._steps_info[step].obs["goal_object"] is None
+        ):
+            with gzip.open(self.exp_dir / "goal_object.pkl.gz", "rb") as f:
+                goal_object = pickle.load(f)
+                self._steps_info[step].obs["goal_object"] = goal_object
+
         return self._steps_info[step]
 
     @property
@@ -576,12 +646,17 @@ class ExpResult:
     def get_screenshot(self, step: int, som=False) -> Image:
         key = (step, som)
         if self._screenshots.get(key, None) is None:
-            file_name = f"screenshot_{'som_' if som else ''}step_{step}.jpg"
-            self._screenshots[key] = Image.open(self.exp_dir / file_name)
+            file_name = f"screenshot_{'som_' if som else ''}step_{step}"
+            try:
+                with Image.open(self.exp_dir / (file_name + ".png")) as img:
+                    self._screenshots[key] = img.copy()
+            except FileNotFoundError:
+                with Image.open(self.exp_dir / (file_name + ".jpg")) as img:
+                    self._screenshots[key] = img.copy()
         return self._screenshots[key]
 
     def get_screenshots(self, som=False):
-        files = list(self.exp_dir.glob("screenshot_step_*.jpg"))
+        files = list(self.exp_dir.glob("screenshot_step_*"))
         max_step = 0
         for file in files:
             step = int(file.name.split("_")[-1].split(".")[0])
@@ -719,6 +794,8 @@ def _get_env_name(task_name: str):
         import browsergym.webarena
     elif task_name.startswith("visualwebarena"):
         import browsergym.visualwebarena
+    elif task_name.startswith("assistantbench"):
+        import browsergym.assistantbench
 
     return f"browsergym/{task_name}"
 
